@@ -7,21 +7,21 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'europe-west10-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
+      - 'europe-west8-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
       - '-t'
-      - 'europe-west10-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:latest'
+      - 'europe-west8-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:latest'
       - '.'
 
   # Push the Docker image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'europe-west10-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
+      - 'europe-west8-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
 
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'europe-west10-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:latest'
+      - 'europe-west8-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:latest'
 
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -31,12 +31,12 @@ steps:
       - 'deploy'
       - 'app-mod-workshop'
       - '--image'
-      - 'europe-west10-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
+      - 'europe-west8-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
       - '--region'
-      - 'europe-west10'
+      - 'europe-west8'
       - '--allow-unauthenticated'
       - '--set-env-vars'
-      - 'DB_HOST=/cloudsql/$PROJECT_ID:europe-west10:appmod-phpapp'
+      - 'DB_HOST=/cloudsql/$PROJECT_ID:europe-west8:appmod-phpapp'
       - '--set-env-vars'
       - 'DB_NAME=image_catalog'
       - '--set-env-vars'
@@ -44,7 +44,7 @@ steps:
       - '--set-secrets'
       - 'DB_PASSWORD=db-user-password:latest'
       - '--add-cloudsql-instances'
-      - '$PROJECT_ID:europe-west10:appmod-phpapp'
+      - '$PROJECT_ID:europe-west8:appmod-phpapp'
       - '--memory'
       - '1Gi'
       - '--cpu'
@@ -74,8 +74,8 @@ steps:
 
 # Store build artifacts
 images:
-  - 'europe-west10-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
-  - 'europe-west10-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:latest'
+  - 'europe-west8-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
+  - 'europe-west8-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:latest'
 
 # Build configuration
 options:

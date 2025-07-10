@@ -7,7 +7,7 @@ set -e
 
 # Configuration
 PROJECT_ID="kinetic-magnet-106116"
-REGION="europe-west10"
+REGION="europe-west8"
 SERVICE_NAME="app-mod-workshop"
 REPO_NAME="app-mod-workshop"
 GITHUB_REPO="tonyzorin/app-mod-workshop"
@@ -36,30 +36,33 @@ gcloud services enable sqladmin.googleapis.com
 gcloud services enable secretmanager.googleapis.com
 gcloud services enable artifactregistry.googleapis.com
 
-# Step 3: Create Cloud SQL instance (if it doesn't exist)
-echo -e "${YELLOW}Step 3: Setting up Cloud SQL instance${NC}"
-if ! gcloud sql instances describe $INSTANCE_NAME --quiet 2>/dev/null; then
-    echo "Creating new Cloud SQL instance..."
+# Step 3: Check Cloud SQL instance (already exists)
+echo -e "${YELLOW}Step 3: Checking existing Cloud SQL instance${NC}"
+if gcloud sql instances describe $INSTANCE_NAME --quiet 2>/dev/null; then
+    echo "✅ Cloud SQL instance $INSTANCE_NAME found in $REGION"
     DB_PASSWORD="appmod-phpapp"
-    
-    gcloud sql instances create $INSTANCE_NAME \
-        --database-version=MYSQL_8_0 \
-        --tier=db-f1-micro \
-        --region=$REGION \
-        --root-password=$DB_PASSWORD
-    
-    # Create database
-    gcloud sql databases create $DATABASE_NAME --instance=$INSTANCE_NAME
-    
-    # Create database user
     DB_USER="appmod-phpapp-user"
     DB_USER_PASSWORD="appmod-phpapp"
-    gcloud sql users create $DB_USER --instance=$INSTANCE_NAME --password=$DB_USER_PASSWORD
+    
+    # Ensure database exists
+    if ! gcloud sql databases describe $DATABASE_NAME --instance=$INSTANCE_NAME --quiet 2>/dev/null; then
+        echo "Creating database $DATABASE_NAME..."
+        gcloud sql databases create $DATABASE_NAME --instance=$INSTANCE_NAME
+    else
+        echo "✅ Database $DATABASE_NAME already exists"
+    fi
+    
+    # Ensure user exists
+    if ! gcloud sql users describe $DB_USER --instance=$INSTANCE_NAME --quiet 2>/dev/null; then
+        echo "Creating database user $DB_USER..."
+        gcloud sql users create $DB_USER --instance=$INSTANCE_NAME --password=$DB_USER_PASSWORD
+    else
+        echo "✅ Database user $DB_USER already exists"
+    fi
 else
-    echo "Cloud SQL instance $INSTANCE_NAME already exists"
-    DB_PASSWORD="appmod-phpapp"
-    DB_USER="appmod-phpapp-user"
-    DB_USER_PASSWORD="appmod-phpapp"
+    echo "❌ Cloud SQL instance $INSTANCE_NAME not found!"
+    echo "Please create the instance first or check the instance name."
+    exit 1
 fi
 
 # Step 4: Store secrets in Secret Manager
@@ -82,7 +85,7 @@ if ! gcloud artifacts repositories describe $REPO_NAME --location=$REGION --quie
         --location=$REGION \
         --description="Docker repository for $SERVICE_NAME"
 else
-    echo "Artifact Registry repository already exists"
+    echo "✅ Artifact Registry repository already exists"
 fi
 
 # Step 6: Build and push Docker image
@@ -130,6 +133,7 @@ SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --form
 echo -e "${GREEN}✅ Deployment completed!${NC}"
 echo -e "${GREEN}🌐 Service URL: $SERVICE_URL${NC}"
 echo -e "${GREEN}🔐 Database Instance: $INSTANCE_CONNECTION_NAME${NC}"
+echo -e "${GREEN}📍 Database IP: 34.154.174.181${NC}"
 echo -e "${YELLOW}📝 Next steps:${NC}"
 echo "1. Set up the Cloud Build trigger manually (see instructions above)"
 echo "2. Import your database schema by running: ./import-db-schema.sh"
@@ -146,6 +150,7 @@ Database Instance: $INSTANCE_CONNECTION_NAME
 Database Name: $DATABASE_NAME
 Database User: $DB_USER
 Database Password: $DB_USER_PASSWORD
+Database IP: 34.154.174.181
 Region: $REGION
 Image URL: $IMAGE_URL
 Container Repository: $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME
@@ -154,6 +159,13 @@ Secrets in Secret Manager:
 - db-root-password
 - db-user-password
 - db-instance-name
+
+Connection Details:
+- Host: 34.154.174.181
+- Port: 3306
+- Database: $DATABASE_NAME
+- User: $DB_USER
+- Password: $DB_USER_PASSWORD
 
 Next Steps:
 1. Set up Cloud Build trigger for CI/CD
