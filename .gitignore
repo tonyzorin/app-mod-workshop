@@ -34,4 +34,12 @@ logs/
 
 # Temporary files
 tmp/
-temp/ 
+temp/
+
+# Google Cloud SDK
+google-cloud-sdk/
+y/
+.gcloudignore
+
+# Deployment artifacts
+deployment-info.txt 
