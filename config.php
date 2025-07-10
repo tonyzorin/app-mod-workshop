@@ -27,6 +27,7 @@ try {
             filename VARCHAR(255) NOT NULL,
             upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             user_id INTEGER,
+            inappropriate INTEGER DEFAULT 0,
             FOREIGN KEY (user_id) REFERENCES users(id)
         )");
         
