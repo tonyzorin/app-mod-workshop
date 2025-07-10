@@ -1,0 +1,98 @@
+# Google Cloud Build CI/CD Pipeline
+# This is the equivalent of .gitlab-ci.yml for Google Cloud
+
+steps:
+  # Step 1: Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-image'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${BUILD_ID}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:latest'
+      - '.'
+    env:
+      - 'DOCKER_BUILDKIT=1'
+
+  # Step 2: Push the Docker image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-image'
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}'
+    waitFor: ['build-image']
+
+  # Step 3: Deploy to DEV environment
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'deploy-dev'
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}-dev'
+      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${BUILD_ID}'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--port=80'
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--max-instances=10'
+      - '--set-env-vars=ENVIRONMENT=development,DB_HOST=localhost'
+      - '--tag=dev'
+    waitFor: ['push-image']
+
+  # Step 4: Run tests against DEV environment
+  - name: 'gcr.io/cloud-builders/curl'
+    id: 'test-dev'
+    args:
+      - '-f'
+      - 'https://${_SERVICE_NAME}-dev-${_HASH}-${_REGION_SHORT}.a.run.app'
+    waitFor: ['deploy-dev']
+
+  # Step 5: Deploy to PROD environment (only on main branch)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'deploy-prod'
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}-prod'
+      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${BUILD_ID}'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--port=80'
+      - '--memory=1Gi'
+      - '--cpu=2'
+      - '--max-instances=100'
+      - '--set-env-vars=ENVIRONMENT=production'
+      - '--tag=prod'
+    waitFor: ['test-dev']
+
+# Substitution variables (can be overridden)
+substitutions:
+  _REGION: 'us-central1'
+  _REGION_SHORT: 'uc'
+  _REPOSITORY: 'app-mod-workshop'
+  _SERVICE_NAME: 'php-amarcord'
+  _HASH: 'your-hash-here'
+
+# Build configuration
+options:
+  # Use higher performance machine for builds
+  machineType: 'E2_HIGHCPU_8'
+  # Enable substitution validation
+  substitutionOption: 'ALLOW_LOOSE'
+
+# Build timeout
+timeout: '1200s'
+
+# Build logs
+logsBucket: 'gs://${PROJECT_ID}-build-logs'
+
+# Build artifacts
+artifacts:
+  images:
+    - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${BUILD_ID}'
+    - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:latest' 

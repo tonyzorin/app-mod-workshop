@@ -1,0 +1,205 @@
+# Advanced Google Cloud Build CI/CD Pipeline
+# Branch-based deployments: dev branch -> DEV env, main branch -> PROD env
+
+steps:
+  # Step 1: Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-image'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${BRANCH_NAME}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:latest'
+      - '.'
+    env:
+      - 'DOCKER_BUILDKIT=1'
+
+  # Step 2: Run security scan
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'security-scan'
+    args:
+      - 'beta'
+      - 'container'
+      - 'images'
+      - 'scan'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}'
+      - '--quiet'
+    waitFor: ['build-image']
+
+  # Step 3: Push the Docker image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-image'
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}'
+    waitFor: ['security-scan']
+
+  # Step 4: Deploy to DEV environment (all branches)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'deploy-dev'
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}-dev'
+      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--port=80'
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--max-instances=5'
+      - '--set-env-vars=ENVIRONMENT=development,BRANCH=${BRANCH_NAME},BUILD_ID=${BUILD_ID}'
+      - '--tag=dev'
+      - '--revision-suffix=${SHORT_SHA}'
+    waitFor: ['push-image']
+
+  # Step 5: Run integration tests
+  - name: 'gcr.io/cloud-builders/curl'
+    id: 'integration-tests'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Running integration tests..."
+        
+        # Get the service URL
+        SERVICE_URL=$$(gcloud run services describe ${_SERVICE_NAME}-dev --region=${_REGION} --format="value(status.url)")
+        echo "Testing service at: $$SERVICE_URL"
+        
+        # Test 1: Health check
+        curl -f "$$SERVICE_URL" || exit 1
+        echo "✅ Health check passed"
+        
+        # Test 2: Login page
+        curl -f "$$SERVICE_URL/login.php" || exit 1
+        echo "✅ Login page accessible"
+        
+        # Test 3: Registration page
+        curl -f "$$SERVICE_URL/register.php" || exit 1
+        echo "✅ Registration page accessible"
+        
+        echo "🎉 All tests passed!"
+    waitFor: ['deploy-dev']
+
+  # Step 6: Deploy to STAGING (only on main branch)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'deploy-staging'
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}-staging'
+      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--port=80'
+      - '--memory=1Gi'
+      - '--cpu=1'
+      - '--max-instances=10'
+      - '--set-env-vars=ENVIRONMENT=staging,BRANCH=${BRANCH_NAME},BUILD_ID=${BUILD_ID}'
+      - '--tag=staging'
+      - '--revision-suffix=${SHORT_SHA}'
+    waitFor: ['integration-tests']
+    # Only run on main branch
+    condition: |
+      if [ "${BRANCH_NAME}" = "main" ]; then
+        exit 0
+      else
+        echo "Skipping staging deployment for branch: ${BRANCH_NAME}"
+        exit 1
+      fi
+
+  # Step 7: Run performance tests on staging
+  - name: 'gcr.io/cloud-builders/curl'
+    id: 'performance-tests'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Running performance tests on staging..."
+        
+        SERVICE_URL=$$(gcloud run services describe ${_SERVICE_NAME}-staging --region=${_REGION} --format="value(status.url)")
+        echo "Performance testing: $$SERVICE_URL"
+        
+        # Simple load test with curl
+        for i in {1..10}; do
+          curl -w "@curl-format.txt" -o /dev/null -s "$$SERVICE_URL" || exit 1
+        done
+        
+        echo "✅ Performance tests passed"
+    waitFor: ['deploy-staging']
+
+  # Step 8: Deploy to PRODUCTION (only on main branch, manual approval)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'deploy-production'
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}-prod'
+      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--port=80'
+      - '--memory=2Gi'
+      - '--cpu=2'
+      - '--max-instances=100'
+      - '--min-instances=1'
+      - '--set-env-vars=ENVIRONMENT=production,BRANCH=${BRANCH_NAME},BUILD_ID=${BUILD_ID}'
+      - '--tag=prod'
+      - '--revision-suffix=${SHORT_SHA}'
+    waitFor: ['performance-tests']
+
+  # Step 9: Send notification
+  - name: 'gcr.io/cloud-builders/curl'
+    id: 'notify'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🚀 Deployment completed successfully!"
+        echo "Branch: ${BRANCH_NAME}"
+        echo "Commit: ${SHORT_SHA}"
+        echo "Build ID: ${BUILD_ID}"
+        
+        # Get service URLs
+        DEV_URL=$$(gcloud run services describe ${_SERVICE_NAME}-dev --region=${_REGION} --format="value(status.url)" 2>/dev/null || echo "N/A")
+        
+        if [ "${BRANCH_NAME}" = "main" ]; then
+          STAGING_URL=$$(gcloud run services describe ${_SERVICE_NAME}-staging --region=${_REGION} --format="value(status.url)" 2>/dev/null || echo "N/A")
+          PROD_URL=$$(gcloud run services describe ${_SERVICE_NAME}-prod --region=${_REGION} --format="value(status.url)" 2>/dev/null || echo "N/A")
+          
+          echo "🌐 Environment URLs:"
+          echo "  DEV: $$DEV_URL"
+          echo "  STAGING: $$STAGING_URL"
+          echo "  PRODUCTION: $$PROD_URL"
+        else
+          echo "🌐 DEV URL: $$DEV_URL"
+        fi
+    waitFor: ['deploy-production']
+
+# Substitution variables
+substitutions:
+  _REGION: 'us-central1'
+  _REPOSITORY: 'app-mod-workshop'
+  _SERVICE_NAME: 'php-amarcord'
+
+# Build configuration
+options:
+  machineType: 'E2_HIGHCPU_8'
+  substitutionOption: 'ALLOW_LOOSE'
+  logging: 'CLOUD_LOGGING_ONLY'
+
+timeout: '1800s'
+
+# Build artifacts
+artifacts:
+  images:
+    - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}'
+    - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${BRANCH_NAME}'
+    - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:latest' 

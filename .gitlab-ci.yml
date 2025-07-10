@@ -1,0 +1,173 @@
+# GitLab CI/CD Pipeline (for comparison with Google Cloud Build)
+# This would be used if you were using GitLab instead of Google Cloud Build
+
+stages:
+  - build
+  - test
+  - security
+  - deploy-dev
+  - deploy-staging
+  - deploy-prod
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  PROJECT_ID: "kinetic-magnet-106116"
+  REGION: "us-central1"
+  REPOSITORY: "app-mod-workshop"
+  SERVICE_NAME: "php-amarcord"
+
+# Build Docker image
+build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - echo $GCP_SERVICE_KEY | base64 -d > gcp-key.json
+    - gcloud auth activate-service-account --key-file gcp-key.json
+    - gcloud config set project $PROJECT_ID
+    - gcloud auth configure-docker $REGION-docker.pkg.dev
+  script:
+    - docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:$CI_COMMIT_SHORT_SHA .
+    - docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:$CI_COMMIT_SHORT_SHA
+  only:
+    - branches
+    - merge_requests
+
+# Security scan
+security_scan:
+  stage: security
+  image: google/cloud-sdk:alpine
+  before_script:
+    - echo $GCP_SERVICE_KEY | base64 -d > gcp-key.json
+    - gcloud auth activate-service-account --key-file gcp-key.json
+    - gcloud config set project $PROJECT_ID
+  script:
+    - gcloud beta container images scan $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:$CI_COMMIT_SHORT_SHA
+  dependencies:
+    - build
+  only:
+    - branches
+    - merge_requests
+
+# Unit tests (if we had them)
+test:
+  stage: test
+  image: php:5.6-cli
+  script:
+    - echo "Running unit tests..."
+    - php -l index.php
+    - php -l login.php
+    - php -l register.php
+    - echo "✅ Syntax tests passed"
+  only:
+    - branches
+    - merge_requests
+
+# Deploy to DEV environment
+deploy_dev:
+  stage: deploy-dev
+  image: google/cloud-sdk:alpine
+  before_script:
+    - echo $GCP_SERVICE_KEY | base64 -d > gcp-key.json
+    - gcloud auth activate-service-account --key-file gcp-key.json
+    - gcloud config set project $PROJECT_ID
+  script:
+    - |
+      gcloud run deploy $SERVICE_NAME-dev \
+        --image=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:$CI_COMMIT_SHORT_SHA \
+        --region=$REGION \
+        --platform=managed \
+        --allow-unauthenticated \
+        --port=80 \
+        --memory=512Mi \
+        --cpu=1 \
+        --max-instances=5 \
+        --set-env-vars=ENVIRONMENT=development,BRANCH=$CI_COMMIT_REF_NAME \
+        --tag=dev
+  environment:
+    name: development
+    url: https://$SERVICE_NAME-dev-$CI_PROJECT_ID-$REGION_SHORT.a.run.app
+  dependencies:
+    - build
+    - security_scan
+    - test
+  only:
+    - branches
+    - merge_requests
+
+# Integration tests
+integration_tests:
+  stage: deploy-dev
+  image: curlimages/curl:latest
+  script:
+    - echo "Running integration tests..."
+    - curl -f https://$SERVICE_NAME-dev-$CI_PROJECT_ID-$REGION_SHORT.a.run.app || exit 1
+    - curl -f https://$SERVICE_NAME-dev-$CI_PROJECT_ID-$REGION_SHORT.a.run.app/login.php || exit 1
+    - echo "✅ Integration tests passed"
+  dependencies:
+    - deploy_dev
+  only:
+    - branches
+    - merge_requests
+
+# Deploy to STAGING (main branch only)
+deploy_staging:
+  stage: deploy-staging
+  image: google/cloud-sdk:alpine
+  before_script:
+    - echo $GCP_SERVICE_KEY | base64 -d > gcp-key.json
+    - gcloud auth activate-service-account --key-file gcp-key.json
+    - gcloud config set project $PROJECT_ID
+  script:
+    - |
+      gcloud run deploy $SERVICE_NAME-staging \
+        --image=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:$CI_COMMIT_SHORT_SHA \
+        --region=$REGION \
+        --platform=managed \
+        --allow-unauthenticated \
+        --port=80 \
+        --memory=1Gi \
+        --cpu=1 \
+        --max-instances=10 \
+        --set-env-vars=ENVIRONMENT=staging,BRANCH=$CI_COMMIT_REF_NAME \
+        --tag=staging
+  environment:
+    name: staging
+    url: https://$SERVICE_NAME-staging-$CI_PROJECT_ID-$REGION_SHORT.a.run.app
+  dependencies:
+    - integration_tests
+  only:
+    - main
+
+# Deploy to PRODUCTION (main branch only, manual)
+deploy_production:
+  stage: deploy-prod
+  image: google/cloud-sdk:alpine
+  before_script:
+    - echo $GCP_SERVICE_KEY | base64 -d > gcp-key.json
+    - gcloud auth activate-service-account --key-file gcp-key.json
+    - gcloud config set project $PROJECT_ID
+  script:
+    - |
+      gcloud run deploy $SERVICE_NAME-prod \
+        --image=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:$CI_COMMIT_SHORT_SHA \
+        --region=$REGION \
+        --platform=managed \
+        --allow-unauthenticated \
+        --port=80 \
+        --memory=2Gi \
+        --cpu=2 \
+        --max-instances=100 \
+        --min-instances=1 \
+        --set-env-vars=ENVIRONMENT=production,BRANCH=$CI_COMMIT_REF_NAME \
+        --tag=prod
+  environment:
+    name: production
+    url: https://$SERVICE_NAME-prod-$CI_PROJECT_ID-$REGION_SHORT.a.run.app
+  dependencies:
+    - deploy_staging
+  when: manual
+  only:
+    - main 
