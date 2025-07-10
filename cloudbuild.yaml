@@ -2,10 +2,11 @@
 # This is the equivalent of .gitlab-ci.yml for Google Cloud
 
 steps:
-  # Build the Docker image
+  # Build the Docker image for AMD64 platform
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
+      - '--platform=linux/amd64'
       - '-t'
       - 'europe-west8-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
       - '-t'
@@ -40,7 +41,7 @@ steps:
       - '--set-env-vars'
       - 'DB_NAME=image_catalog'
       - '--set-env-vars'
-      - 'DB_USER=appmod-phpapp-user'
+      - 'DB_USER=appmod-phpapp'
       - '--set-secrets'
       - 'DB_PASSWORD=db-user-password:latest'
       - '--add-cloudsql-instances'
