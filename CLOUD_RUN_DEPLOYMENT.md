@@ -31,7 +31,7 @@ gcloud auth login
 gcloud config set project kinetic-magnet-106116
 
 # Set default region
-gcloud config set run/region us-central1
+gcloud config set run/region europe-west10
 ```
 
 ### 3. Run the Deployment Script
@@ -46,9 +46,9 @@ chmod +x deploy-to-cloudrun.sh
 
 This script will:
 - ✅ Enable required Google Cloud APIs
-- ✅ Create Cloud SQL MySQL instance
+- ✅ Create Cloud SQL MySQL instance (appmod-phpapp)
 - ✅ Set up Secret Manager for database credentials
-- ✅ Create Artifact Registry repository
+- ✅ Create Artifact Registry repository in europe-west10
 - ✅ Build and deploy Docker image to Cloud Run
 - ✅ Configure environment variables and secrets
 
@@ -85,7 +85,7 @@ After deployment, you'll get a Cloud Run URL. Test it:
 
 ```bash
 # Get the service URL
-gcloud run services describe app-mod-workshop --region=us-central1 --format="value(status.url)"
+gcloud run services describe app-mod-workshop --region=europe-west10 --format="value(status.url)"
 
 # Test the application
 curl -I https://your-service-url.a.run.app
@@ -94,28 +94,40 @@ curl -I https://your-service-url.a.run.app
 ## Architecture
 
 ```
-GitHub → Cloud Build → Artifact Registry → Cloud Run
-                                              ↓
-                                         Cloud SQL
-                                              ↓
-                                      Secret Manager
+GitHub → Cloud Build → Artifact Registry (europe-west10) → Cloud Run
+                                                              ↓
+                                                         Cloud SQL (appmod-phpapp)
+                                                              ↓
+                                                      Secret Manager
 ```
 
 ### Components:
 
-- **Cloud Run**: Serverless container platform hosting the PHP app
-- **Cloud SQL**: Managed MySQL database
+- **Cloud Run**: Serverless container platform hosting the PHP app (europe-west10)
+- **Cloud SQL**: Managed MySQL database instance (appmod-phpapp)
 - **Secret Manager**: Secure storage for database credentials
-- **Artifact Registry**: Container image storage
+- **Artifact Registry**: Container image storage (europe-west10-docker.pkg.dev)
 - **Cloud Build**: CI/CD pipeline triggered by GitHub commits
+
+## Configuration Details
+
+### Database Settings:
+- **Instance Name**: `appmod-phpapp`
+- **Database Name**: `image_catalog`
+- **Database User**: `appmod-phpapp-user`
+- **Database Password**: `appmod-phpapp`
+- **Region**: `europe-west10`
+
+### Container Registry:
+- **Repository**: `europe-west10-docker.pkg.dev/kinetic-magnet-106116/app-mod-workshop`
 
 ## Environment Variables
 
 The application uses these environment variables in Cloud Run:
 
-- `DB_HOST`: `/cloudsql/PROJECT_ID:REGION:INSTANCE_NAME`
+- `DB_HOST`: `/cloudsql/kinetic-magnet-106116:europe-west10:appmod-phpapp`
 - `DB_NAME`: `image_catalog`
-- `DB_USER`: `appuser`
+- `DB_USER`: `appmod-phpapp-user`
 - `DB_PASSWORD`: Retrieved from Secret Manager
 
 ## Security Features
@@ -144,7 +156,7 @@ The application uses these environment variables in Cloud Run:
 ### Common Issues:
 
 1. **Database Connection Failed**
-   - Check Cloud SQL instance is running
+   - Check Cloud SQL instance `appmod-phpapp` is running
    - Verify Secret Manager permissions
    - Ensure Cloud SQL connector is properly configured
 
@@ -162,16 +174,16 @@ The application uses these environment variables in Cloud Run:
 
 ```bash
 # View Cloud Run logs
-gcloud run services logs tail app-mod-workshop --region=us-central1
+gcloud run services logs tail app-mod-workshop --region=europe-west10
 
 # Check Cloud SQL status
-gcloud sql instances describe app-mod-workshop-db
+gcloud sql instances describe appmod-phpapp
 
 # View build history
 gcloud builds list --limit=10
 
 # Connect to Cloud SQL for debugging
-gcloud sql connect app-mod-workshop-db --user=root
+gcloud sql connect appmod-phpapp --user=root
 ```
 
 ## Next Steps

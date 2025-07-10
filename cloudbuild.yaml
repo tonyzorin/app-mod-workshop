@@ -7,21 +7,21 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
+      - 'europe-west10-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
       - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:latest'
+      - 'europe-west10-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:latest'
       - '.'
 
   # Push the Docker image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
+      - 'europe-west10-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
 
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:latest'
+      - 'europe-west10-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:latest'
 
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -31,20 +31,20 @@ steps:
       - 'deploy'
       - 'app-mod-workshop'
       - '--image'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
+      - 'europe-west10-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
       - '--region'
-      - 'us-central1'
+      - 'europe-west10'
       - '--allow-unauthenticated'
       - '--set-env-vars'
-      - 'DB_HOST=/cloudsql/$PROJECT_ID:us-central1:app-mod-workshop-db'
+      - 'DB_HOST=/cloudsql/$PROJECT_ID:europe-west10:appmod-phpapp'
       - '--set-env-vars'
       - 'DB_NAME=image_catalog'
       - '--set-env-vars'
-      - 'DB_USER=appuser'
+      - 'DB_USER=appmod-phpapp-user'
       - '--set-secrets'
       - 'DB_PASSWORD=db-user-password:latest'
       - '--add-cloudsql-instances'
-      - '$PROJECT_ID:us-central1:app-mod-workshop-db'
+      - '$PROJECT_ID:europe-west10:appmod-phpapp'
       - '--memory'
       - '1Gi'
       - '--cpu'
@@ -59,23 +59,23 @@ steps:
       - '-c'
       - |
         # Check if tables exist, if not, import schema
-        if ! gcloud sql databases describe image_catalog --instance=app-mod-workshop-db --quiet; then
+        if ! gcloud sql databases describe image_catalog --instance=appmod-phpapp --quiet; then
           echo "Database not found, creating..."
-          gcloud sql databases create image_catalog --instance=app-mod-workshop-db
+          gcloud sql databases create image_catalog --instance=appmod-phpapp
         fi
         
         # Import schema if tables don't exist
-        TABLE_COUNT=$(gcloud sql connect app-mod-workshop-db --user=root --quiet --command="SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'image_catalog';" 2>/dev/null | tail -1 || echo "0")
+        TABLE_COUNT=$(gcloud sql connect appmod-phpapp --user=root --quiet --command="SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'image_catalog';" 2>/dev/null | tail -1 || echo "0")
         
         if [ "$TABLE_COUNT" = "0" ]; then
           echo "Importing database schema..."
-          gcloud sql import sql app-mod-workshop-db gs://$PROJECT_ID-sql-imports/schema.sql --database=image_catalog
+          gcloud sql import sql appmod-phpapp gs://$PROJECT_ID-sql-imports/schema.sql --database=image_catalog
         fi
 
 # Store build artifacts
 images:
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:latest'
+  - 'europe-west10-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
+  - 'europe-west10-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:latest'
 
 # Build configuration
 options:

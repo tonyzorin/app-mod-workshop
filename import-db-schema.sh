@@ -6,7 +6,7 @@
 set -e
 
 PROJECT_ID="kinetic-magnet-106116"
-INSTANCE_NAME="app-mod-workshop-db"
+INSTANCE_NAME="appmod-phpapp"
 DATABASE_NAME="image_catalog"
 BUCKET_NAME="${PROJECT_ID}-sql-imports"
 

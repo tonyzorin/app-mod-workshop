@@ -7,10 +7,12 @@ set -e
 
 # Configuration
 PROJECT_ID="kinetic-magnet-106116"
-REGION="us-central1"
+REGION="europe-west10"
 SERVICE_NAME="app-mod-workshop"
 REPO_NAME="app-mod-workshop"
 GITHUB_REPO="tonyzorin/app-mod-workshop"
+INSTANCE_NAME="appmod-phpapp"
+DATABASE_NAME="image_catalog"
 
 # Colors for output
 RED='\033[0;31m'
@@ -34,37 +36,54 @@ gcloud services enable sqladmin.googleapis.com
 gcloud services enable secretmanager.googleapis.com
 gcloud services enable artifactregistry.googleapis.com
 
-# Step 3: Create Cloud SQL instance
-echo -e "${YELLOW}Step 3: Creating Cloud SQL instance${NC}"
-INSTANCE_NAME="app-mod-workshop-db"
-DB_PASSWORD=$(openssl rand -base64 32)
-
-gcloud sql instances create $INSTANCE_NAME \
-    --database-version=MYSQL_8_0 \
-    --tier=db-f1-micro \
-    --region=$REGION \
-    --root-password=$DB_PASSWORD
-
-# Create database
-gcloud sql databases create image_catalog --instance=$INSTANCE_NAME
-
-# Create database user
-DB_USER="appuser"
-DB_USER_PASSWORD=$(openssl rand -base64 32)
-gcloud sql users create $DB_USER --instance=$INSTANCE_NAME --password=$DB_USER_PASSWORD
+# Step 3: Create Cloud SQL instance (if it doesn't exist)
+echo -e "${YELLOW}Step 3: Setting up Cloud SQL instance${NC}"
+if ! gcloud sql instances describe $INSTANCE_NAME --quiet 2>/dev/null; then
+    echo "Creating new Cloud SQL instance..."
+    DB_PASSWORD="appmod-phpapp"
+    
+    gcloud sql instances create $INSTANCE_NAME \
+        --database-version=MYSQL_8_0 \
+        --tier=db-f1-micro \
+        --region=$REGION \
+        --root-password=$DB_PASSWORD
+    
+    # Create database
+    gcloud sql databases create $DATABASE_NAME --instance=$INSTANCE_NAME
+    
+    # Create database user
+    DB_USER="appmod-phpapp-user"
+    DB_USER_PASSWORD="appmod-phpapp"
+    gcloud sql users create $DB_USER --instance=$INSTANCE_NAME --password=$DB_USER_PASSWORD
+else
+    echo "Cloud SQL instance $INSTANCE_NAME already exists"
+    DB_PASSWORD="appmod-phpapp"
+    DB_USER="appmod-phpapp-user"
+    DB_USER_PASSWORD="appmod-phpapp"
+fi
 
 # Step 4: Store secrets in Secret Manager
 echo -e "${YELLOW}Step 4: Storing secrets in Secret Manager${NC}"
-echo -n "$DB_PASSWORD" | gcloud secrets create db-root-password --data-file=-
-echo -n "$DB_USER_PASSWORD" | gcloud secrets create db-user-password --data-file=-
-echo -n "$INSTANCE_NAME" | gcloud secrets create db-instance-name --data-file=-
+echo -n "$DB_PASSWORD" | gcloud secrets create db-root-password --data-file=- 2>/dev/null || \
+    echo -n "$DB_PASSWORD" | gcloud secrets versions add db-root-password --data-file=-
+    
+echo -n "$DB_USER_PASSWORD" | gcloud secrets create db-user-password --data-file=- 2>/dev/null || \
+    echo -n "$DB_USER_PASSWORD" | gcloud secrets versions add db-user-password --data-file=-
+    
+echo -n "$INSTANCE_NAME" | gcloud secrets create db-instance-name --data-file=- 2>/dev/null || \
+    echo -n "$INSTANCE_NAME" | gcloud secrets versions add db-instance-name --data-file=-
 
-# Step 5: Create Artifact Registry repository
-echo -e "${YELLOW}Step 5: Creating Artifact Registry repository${NC}"
-gcloud artifacts repositories create $REPO_NAME \
-    --repository-format=docker \
-    --location=$REGION \
-    --description="Docker repository for $SERVICE_NAME"
+# Step 5: Create Artifact Registry repository (if it doesn't exist)
+echo -e "${YELLOW}Step 5: Setting up Artifact Registry repository${NC}"
+if ! gcloud artifacts repositories describe $REPO_NAME --location=$REGION --quiet 2>/dev/null; then
+    echo "Creating Artifact Registry repository..."
+    gcloud artifacts repositories create $REPO_NAME \
+        --repository-format=docker \
+        --location=$REGION \
+        --description="Docker repository for $SERVICE_NAME"
+else
+    echo "Artifact Registry repository already exists"
+fi
 
 # Step 6: Build and push Docker image
 echo -e "${YELLOW}Step 6: Building and pushing Docker image${NC}"
@@ -81,7 +100,7 @@ gcloud run deploy $SERVICE_NAME \
     --region $REGION \
     --allow-unauthenticated \
     --set-env-vars="DB_HOST=/cloudsql/$INSTANCE_CONNECTION_NAME" \
-    --set-env-vars="DB_NAME=image_catalog" \
+    --set-env-vars="DB_NAME=$DATABASE_NAME" \
     --set-env-vars="DB_USER=$DB_USER" \
     --set-secrets="DB_PASSWORD=db-user-password:latest" \
     --add-cloudsql-instances=$INSTANCE_CONNECTION_NAME \
@@ -113,7 +132,7 @@ echo -e "${GREEN}🌐 Service URL: $SERVICE_URL${NC}"
 echo -e "${GREEN}🔐 Database Instance: $INSTANCE_CONNECTION_NAME${NC}"
 echo -e "${YELLOW}📝 Next steps:${NC}"
 echo "1. Set up the Cloud Build trigger manually (see instructions above)"
-echo "2. Import your database schema by connecting to Cloud SQL"
+echo "2. Import your database schema by running: ./import-db-schema.sh"
 echo "3. Test the application"
 
 # Save important information
@@ -124,10 +143,12 @@ Project ID: $PROJECT_ID
 Service Name: $SERVICE_NAME
 Service URL: $SERVICE_URL
 Database Instance: $INSTANCE_CONNECTION_NAME
-Database Name: image_catalog
+Database Name: $DATABASE_NAME
 Database User: $DB_USER
+Database Password: $DB_USER_PASSWORD
 Region: $REGION
 Image URL: $IMAGE_URL
+Container Repository: $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME
 
 Secrets in Secret Manager:
 - db-root-password
@@ -136,8 +157,8 @@ Secrets in Secret Manager:
 
 Next Steps:
 1. Set up Cloud Build trigger for CI/CD
-2. Import database schema
-3. Test the application
+2. Import database schema with: ./import-db-schema.sh
+3. Test the application at: $SERVICE_URL
 EOF
 
 echo -e "${GREEN}📄 Deployment info saved to deployment-info.txt${NC}" 
