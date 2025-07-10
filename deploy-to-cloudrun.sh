@@ -41,7 +41,7 @@ echo -e "${YELLOW}Step 3: Checking existing Cloud SQL instance${NC}"
 if gcloud sql instances describe $INSTANCE_NAME --quiet 2>/dev/null; then
     echo "✅ Cloud SQL instance $INSTANCE_NAME found in $REGION"
     DB_PASSWORD="appmod-phpapp"
-    DB_USER="appmod-phpapp-user"
+    DB_USER="appmod-phpapp"
     DB_USER_PASSWORD="appmod-phpapp"
     
     # Ensure database exists

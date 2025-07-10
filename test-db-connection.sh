@@ -8,7 +8,7 @@ set -e
 PROJECT_ID="kinetic-magnet-106116"
 INSTANCE_NAME="appmod-phpapp"
 DATABASE_NAME="image_catalog"
-DB_USER="appmod-phpapp-user"
+DB_USER="appmod-phpapp"
 DB_PASSWORD="appmod-phpapp"
 DB_IP="34.154.174.181"
 

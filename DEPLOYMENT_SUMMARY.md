@@ -5,7 +5,7 @@
 ### Database Configuration
 - **Instance Name**: `appmod-phpapp`
 - **Database Name**: `image_catalog`
-- **Database User**: `appmod-phpapp-user`
+- **Database User**: `appmod-phpapp`
 - **Database Password**: `appmod-phpapp`
 - **Region**: `europe-west8`
 - **Public IP**: `34.154.174.181`
