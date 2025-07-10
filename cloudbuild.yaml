@@ -2,11 +2,10 @@
 # This is the equivalent of .gitlab-ci.yml for Google Cloud
 
 steps:
-  # Build the Docker image for AMD64 platform
+  # Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
-      - '--platform=linux/amd64'
       - '-t'
       - 'europe-west8-docker.pkg.dev/$PROJECT_ID/app-mod-workshop/app-mod-workshop:$COMMIT_SHA'
       - '-t'

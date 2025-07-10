@@ -1,5 +1,5 @@
-# Use PHP 7.4 with Apache (official image) - force AMD64 platform
-FROM --platform=linux/amd64 php:7.4-apache
+# Use PHP 5.6 with Apache to match MySQL 5.6
+FROM php:5.6-apache
 
 # Install system dependencies and Cloud SQL Proxy
 RUN apt-get update && apt-get install -y \
